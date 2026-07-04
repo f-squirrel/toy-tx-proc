@@ -1,7 +1,4 @@
-//! Core data types for the payments engine.
-//!
-//! Amounts are always [`rust_decimal::Decimal`] — never floating point — so that
-//! financial arithmetic is exact.
+//! Amounts use [`rust_decimal::Decimal`] so financial arithmetic is exact.
 
 use std::fmt;
 
@@ -9,8 +6,7 @@ use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-/// A client identifier. Newtype over `u16` so it can't be confused with a `TxId`
-/// or any other bare integer. Serializes transparently as the underlying number.
+/// A client identifier, kept distinct from transaction IDs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct ClientId(pub u16);
@@ -21,7 +17,7 @@ impl fmt::Display for ClientId {
     }
 }
 
-/// A globally-unique transaction identifier. Newtype over `u32`.
+/// A globally-unique transaction identifier.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct TxId(pub u32);
@@ -32,17 +28,10 @@ impl fmt::Display for TxId {
     }
 }
 
-/// What a transaction does. Each variant carries exactly the data that kind of
-/// operation needs — deposits and withdrawals own their (non-optional) amount,
-/// while dispute/resolve/chargeback reference an earlier transaction and carry
-/// none. This makes "a dispute operation with an amount" or "a deposit without
-/// one" unrepresentable inside the engine.
+/// `type` selects the enum variant during CSV deserialization.
 ///
-/// Deserialized directly from the flat CSV: the `type` column is the tag that
-/// selects the variant, and (for deposit/withdrawal) the `amount` column fills
-/// it. Lifecycle rows ignore any CSV `amount` field because the enum variants
-/// carry no amount. An unknown `type` or a deposit/withdrawal with no amount
-/// fails to deserialize and the row is skipped as malformed.
+/// Deposit/withdrawal amounts are required. Lifecycle rows carry no amount
+/// internally, so any CSV amount on those rows is ignored.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum Operation {
@@ -54,8 +43,6 @@ pub enum Operation {
 }
 
 impl Operation {
-    /// The operation's name as it appears in the CSV `type` column — the single
-    /// source of truth for referring to this kind in logs and error messages.
     pub fn name(&self) -> &'static str {
         match self {
             Operation::Deposit { .. } => "deposit",
@@ -67,11 +54,7 @@ impl Operation {
     }
 }
 
-/// A single transaction: who, which id, and what to do.
-///
-/// Deserializes straight from a flat CSV row — `client` and `tx` are their own
-/// columns, and `operation` is flattened so the `type`/`amount` columns fold
-/// into the [`Operation`] enum inline. The engine consumes this directly.
+/// A CSV transaction row.
 #[derive(Debug, Clone, Copy, Deserialize)]
 pub struct Transaction {
     pub client: ClientId,
@@ -81,22 +64,15 @@ pub struct Transaction {
     pub operation: Operation,
 }
 
-/// A stored accepted deposit or withdrawal, tagged with its dispute lifecycle
-/// state. Only deposits advance beyond `Undisputed`; withdrawals are retained so
-/// duplicate transaction IDs are rejected and withdrawal disputes can be reported
-/// as not disputable.
+/// A stored accepted deposit or withdrawal.
 #[derive(Debug, Clone, Copy)]
 pub enum StoredTransaction {
-    /// Not currently disputed (initial state, or returned here by a resolve).
     Undisputed(Transaction),
-    /// Under dispute — its amount is currently held.
     Disputed(Transaction),
-    /// Terminal: a chargeback has occurred; cannot be disputed again.
     ChargedBack(Transaction),
 }
 
 impl StoredTransaction {
-    /// The original accepted transaction, regardless of lifecycle state.
     pub fn transaction(&self) -> &Transaction {
         match self {
             StoredTransaction::Undisputed(tx)
@@ -128,7 +104,6 @@ impl Account {
         self.locked
     }
 
-    /// Derived total: available funds plus funds held for disputes.
     pub fn total(&self) -> Result<Decimal, AccountArithmeticError> {
         checked_add(self.available, self.held)
     }
@@ -175,6 +150,8 @@ impl Account {
         &mut self,
         mutate: impl FnOnce(&mut Self) -> Result<(), AccountArithmeticError>,
     ) -> Result<(), AccountArithmeticError> {
+        // Apply mutations to a copy so failed arithmetic cannot leave partial
+        // balance or lock-state changes behind.
         let mut next = *self;
         mutate(&mut next)?;
         next.total()?;
@@ -195,10 +172,10 @@ fn checked_sub(lhs: Decimal, rhs: Decimal) -> Result<Decimal, AccountArithmeticE
     lhs.checked_sub(rhs).ok_or(AccountArithmeticError)
 }
 
-/// The output representation of an account — one row of the result CSV, and the
-/// mirror image of [`Transaction`] on the write side. Monetary values are
-/// pre-formatted strings so the exact decimal rendering is fixed here rather
-/// than left to serde; `total` is the derived `available + held`.
+/// One output CSV row.
+///
+/// Monetary values are pre-formatted here instead of left to serde so decimal
+/// rendering stays fixed.
 #[derive(Debug, Serialize)]
 pub struct AccountRecord {
     client: ClientId,
@@ -209,8 +186,6 @@ pub struct AccountRecord {
 }
 
 impl AccountRecord {
-    /// Render `account` (owned by `client`) into its output-CSV form, formatting
-    /// each monetary value to at most 4 decimal places.
     pub fn new(client: ClientId, account: &Account) -> Result<Self, AccountArithmeticError> {
         Ok(Self {
             client,

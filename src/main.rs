@@ -1,13 +1,3 @@
-//! Toy payments engine CLI.
-//!
-//! Usage: `cargo run -- transactions.csv > accounts.csv`
-//!
-//! Reads a CSV of transactions row-by-row, applies them to client accounts, and
-//! writes the final account states as CSV to stdout. All diagnostics go to
-//! stderr; stdout carries CSV only. Bad rows are logged and skipped — the run
-//! still exits 0. Argument errors, unreadable input files, and output write
-//! failures exit non-zero.
-
 use std::path::PathBuf;
 use std::process::ExitCode;
 
@@ -36,7 +26,6 @@ fn main() -> ExitCode {
     ExitCode::SUCCESS
 }
 
-/// Expect exactly one argument: the input CSV path.
 fn parse_args() -> Result<PathBuf, String> {
     let mut args = std::env::args_os().skip(1);
     let path = args
@@ -48,7 +37,6 @@ fn parse_args() -> Result<PathBuf, String> {
     Ok(PathBuf::from(path))
 }
 
-/// Stream the input through the engine and write results to stdout.
 fn run(path: &std::path::Path) -> std::io::Result<()> {
     let mut engine = PaymentsEngine::new();
 

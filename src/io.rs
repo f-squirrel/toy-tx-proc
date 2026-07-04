@@ -1,5 +1,3 @@
-//! CSV input (streaming deserialize) and account CSV output.
-
 use std::fs::File;
 use std::io::{self, Read, Write};
 use std::path::Path;
@@ -11,7 +9,6 @@ use crate::model::{Account, AccountArithmeticError, AccountRecord, ClientId, Tra
 
 const ACCOUNT_HEADERS: [&str; 5] = ["client", "available", "held", "total", "locked"];
 
-/// Open `path` and stream its rows as [`Transaction`]s.
 pub fn read_transactions_from_path(
     path: &Path,
 ) -> io::Result<DeserializeRecordsIntoIter<File, Transaction>> {
@@ -21,15 +18,8 @@ pub fn read_transactions_from_path(
 
 /// Stream transactions from any [`Read`] source.
 ///
-/// Each row deserializes directly into a `Transaction`, with the `type` column
-/// tagging the operation. The `amount` column is required for deposits and
-/// withdrawals; dispute lifecycle rows do not carry an amount internally, so a
-/// CSV amount on those rows is ignored. The iterator yields one `Result` per
-/// row: malformed rows (bad numbers, unknown `type`, a deposit/withdrawal
-/// missing its amount) surface as `Err`, which the caller logs and skips.
-/// Whitespace around every field is trimmed, and `flexible(true)` lets
-/// dispute/resolve/chargeback rows omit the trailing `amount` field without a
-/// column-count error.
+/// `flexible(true)` lets dispute/resolve/chargeback rows omit the trailing
+/// `amount` field, and trimming makes whitespace around CSV fields irrelevant.
 pub fn read_transactions<R: Read>(input: R) -> DeserializeRecordsIntoIter<R, Transaction> {
     ReaderBuilder::new()
         .trim(Trim::All)
@@ -38,8 +28,7 @@ pub fn read_transactions<R: Read>(input: R) -> DeserializeRecordsIntoIter<R, Tra
         .into_deserialize::<Transaction>()
 }
 
-/// Write all accounts as CSV to `out`, sorted ascending by client id for a
-/// stable, deterministic ordering.
+/// Write accounts in deterministic client-id order.
 pub fn write_accounts<'a, W: Write>(
     out: W,
     accounts: impl Iterator<Item = (&'a ClientId, &'a Account)>,
@@ -79,8 +68,6 @@ mod tests {
     use crate::model::Operation;
     use rust_decimal_macros::dec;
 
-    /// Deserialize a CSV body (with header) into transactions, exactly as
-    /// `read_transactions` does but from an in-memory string.
     fn parse(body: &str) -> Vec<csv::Result<Transaction>> {
         let header = "type, client, tx, amount\n";
         ReaderBuilder::new()

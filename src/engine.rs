@@ -1,5 +1,3 @@
-//! Core processing logic: apply each transaction to in-memory account state.
-
 use std::collections::HashMap;
 
 use rust_decimal::Decimal;
@@ -9,8 +7,7 @@ use crate::model::{
     Account, AccountArithmeticError, ClientId, Operation, StoredTransaction, Transaction, TxId,
 };
 
-/// Reasons a single row was not applied. Each is logged to stderr by `main` and
-/// the row is skipped; none is fatal to the run.
+/// Reasons a single row was skipped.
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum EngineError {
     #[error("tx {tx}: amount must be non-negative")]
@@ -47,9 +44,10 @@ pub enum EngineError {
     InvalidDisputeState { tx: TxId, kind: &'static str },
 }
 
-/// Owns all mutable state: per-client accounts and accepted money-moving
-/// transactions. Deposits can be disputed; withdrawals are retained for
-/// duplicate-ID detection and explicit "not disputable" errors.
+/// Per-client accounts plus accepted deposits/withdrawals.
+///
+/// Withdrawals are stored even though only deposits can be disputed, so
+/// duplicate IDs are rejected and withdrawal disputes get a specific error.
 #[derive(Debug, Default)]
 pub struct PaymentsEngine {
     accounts: HashMap<ClientId, Account>,
@@ -61,15 +59,15 @@ impl PaymentsEngine {
         Self::default()
     }
 
-    /// Accounts keyed by client id, for output. Caller sorts as needed.
     pub fn accounts(&self) -> &HashMap<ClientId, Account> {
         &self.accounts
     }
 
     /// Apply one transaction. On `Err`, balances and stored transactions are not
-    /// updated. A syntactically valid first transaction can still create a
-    /// zero-balance account before failing a business rule such as insufficient
-    /// funds.
+    /// updated.
+    ///
+    /// A syntactically valid first transaction can still create a zero-balance
+    /// account before failing a business rule such as insufficient funds.
     pub fn process(&mut self, tx: Transaction) -> Result<(), EngineError> {
         // The operation names itself, so error messages stay in sync with the
         // `type` column without repeating string literals at each call site.
@@ -134,7 +132,6 @@ impl PaymentsEngine {
                 }
             }
         };
-        // The account is guaranteed to exist: the referenced tx created it.
         let account = self.accounts.entry(client).or_default();
         if account.is_locked() {
             return Err(EngineError::AccountLocked { client, kind });
@@ -198,11 +195,6 @@ impl PaymentsEngine {
         Ok(())
     }
 
-    /// Shared preamble for a new money-moving transaction (deposit/withdrawal):
-    /// reject a negative amount or a duplicate tx id, then get-or-create the
-    /// account and reject it if locked. On success returns the unlocked account
-    /// ready to be credited or debited. `kind` labels the operation in the
-    /// `AccountLocked` error.
     fn begin_transaction(
         &mut self,
         client: ClientId,
@@ -223,9 +215,6 @@ impl PaymentsEngine {
         Ok(account)
     }
 
-    /// Look up a referenced accepted tx, verifying it exists and is owned by
-    /// `client`. Returns a mutable handle so the caller can advance its dispute
-    /// lifecycle state.
     fn referenced_tx(
         &mut self,
         tx: TxId,
@@ -285,7 +274,6 @@ mod tests {
             .unwrap();
     }
 
-    /// The account for `client`, or panics — a convenience for assertions.
     fn account(engine: &PaymentsEngine, client: u16) -> &Account {
         &engine.accounts()[&ClientId(client)]
     }
@@ -344,7 +332,6 @@ mod tests {
         engine
             .process(raw(Operation::Withdrawal { amount: dec!(4.0) }, 1, 2))
             .unwrap();
-        // Disputing the withdrawal (tx 2) must not move any funds.
         let err = engine.process(raw(Operation::Dispute, 1, 2)).unwrap_err();
         assert!(matches!(err, EngineError::NotDisputable { .. }));
         let acct = account(&engine, 1);
@@ -385,7 +372,6 @@ mod tests {
         deposit(&mut engine, 1, 1, dec!(10.0));
         engine.process(raw(Operation::Dispute, 1, 1)).unwrap();
         engine.process(raw(Operation::Resolve, 1, 1)).unwrap();
-        // Second dispute succeeds again.
         engine.process(raw(Operation::Dispute, 1, 1)).unwrap();
         assert_eq!(account(&engine, 1).held(), dec!(10.0));
     }

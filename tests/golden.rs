@@ -1,26 +1,17 @@
 //! Golden integration tests.
 //!
-//! Auto-discovers every case in `tests/cases/`. A case is a pair:
-//!
-//! - `NN-name.input.csv`    — transactions fed to the binary (as an arg)
-//! - `NN-name.expected.csv` — the exact CSV the binary must print to stdout
-//!
-//! For each case the compiled binary is run end-to-end (`tx-processor <input>`)
-//! and its stdout is compared directly against the expected file, ignoring only
-//! a trailing-newline difference. Add a case by dropping the two CSV files in
-//! `tests/cases/` — no code change needed.
+//! Each `tests/cases/*.input.csv` file is run through the binary and compared
+//! with the matching `*.expected.csv`, ignoring only trailing newline changes.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-/// Absolute path to the freshly built binary under test (set by Cargo).
 const BIN: &str = env!("CARGO_BIN_EXE_tx-processor");
 
 fn cases_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/cases")
 }
 
-/// Run one golden case, returning `Err(report)` on any failure.
 fn run_case(input: &Path) -> Result<(), String> {
     let name = input
         .file_name()
@@ -47,7 +38,6 @@ fn run_case(input: &Path) -> Result<(), String> {
         .map_err(|e| format!("{name}: cannot read {}: {e}", expected_path.display()))?;
     let actual = String::from_utf8_lossy(&output.stdout);
 
-    // Compare the files directly (ignoring only a trailing newline difference).
     if actual.trim_end() != expected.trim_end() {
         return Err(format!(
             "{name}: output does not match expected\n--- expected ---\n{expected}\n--- actual ---\n{actual}\n--- stderr ---\n{stderr}"
@@ -56,7 +46,6 @@ fn run_case(input: &Path) -> Result<(), String> {
     Ok(())
 }
 
-/// Discover and run every `*.input.csv` case, reporting all failures together.
 #[test]
 fn golden_cases() {
     let dir = cases_dir();

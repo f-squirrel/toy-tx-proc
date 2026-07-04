@@ -1,5 +1,3 @@
-//! CLI-level behavior that golden CSV cases do not cover.
-
 use std::path::PathBuf;
 use std::process::{Command, Output};
 use std::sync::atomic::{AtomicUsize, Ordering};
