@@ -35,13 +35,14 @@ impl fmt::Display for TxId {
 /// What a transaction does. Each variant carries exactly the data that kind of
 /// operation needs — deposits and withdrawals own their (non-optional) amount,
 /// while dispute/resolve/chargeback reference an earlier transaction and carry
-/// none. This makes "a dispute with an amount" or "a deposit without one"
-/// unrepresentable rather than something to validate at runtime.
+/// none. This makes "a dispute operation with an amount" or "a deposit without
+/// one" unrepresentable inside the engine.
 ///
 /// Deserialized directly from the flat CSV: the `type` column is the tag that
 /// selects the variant, and (for deposit/withdrawal) the `amount` column fills
-/// it. An unknown `type` or a deposit/withdrawal with no amount therefore fails
-/// to deserialize and the row is skipped as malformed.
+/// it. Lifecycle rows ignore any CSV `amount` field because the enum variants
+/// carry no amount. An unknown `type` or a deposit/withdrawal with no amount
+/// fails to deserialize and the row is skipped as malformed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum Operation {
@@ -80,7 +81,10 @@ pub struct Transaction {
     pub operation: Operation,
 }
 
-/// A stored money-moving transaction, tagged with its dispute lifecycle state.
+/// A stored accepted deposit or withdrawal, tagged with its dispute lifecycle
+/// state. Only deposits advance beyond `Undisputed`; withdrawals are retained so
+/// duplicate transaction IDs are rejected and withdrawal disputes can be reported
+/// as not disputable.
 #[derive(Debug, Clone, Copy)]
 pub enum StoredTransaction {
     /// Not currently disputed (initial state, or returned here by a resolve).

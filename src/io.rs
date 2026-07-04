@@ -1,4 +1,4 @@
-//! CSV input (streaming deserialize) and output (serialize to stdout).
+//! CSV input (streaming deserialize) and account CSV output.
 
 use std::fs::File;
 use std::io::{self, Read, Write};
@@ -22,12 +22,14 @@ pub fn read_transactions_from_path(
 /// Stream transactions from any [`Read`] source.
 ///
 /// Each row deserializes directly into a `Transaction`, with the `type` column
-/// tagging the operation and `amount` folding into the deposit/withdrawal
-/// variants. The iterator yields one `Result` per row: malformed rows (bad
-/// numbers, unknown `type`, a deposit/withdrawal missing its amount) surface as
-/// `Err`, which the caller logs and skips. Whitespace around every field is
-/// trimmed, and `flexible(true)` lets dispute/resolve/chargeback rows omit the
-/// trailing `amount` field without a column-count error.
+/// tagging the operation. The `amount` column is required for deposits and
+/// withdrawals; dispute lifecycle rows do not carry an amount internally, so a
+/// CSV amount on those rows is ignored. The iterator yields one `Result` per
+/// row: malformed rows (bad numbers, unknown `type`, a deposit/withdrawal
+/// missing its amount) surface as `Err`, which the caller logs and skips.
+/// Whitespace around every field is trimmed, and `flexible(true)` lets
+/// dispute/resolve/chargeback rows omit the trailing `amount` field without a
+/// column-count error.
 pub fn read_transactions<R: Read>(input: R) -> DeserializeRecordsIntoIter<R, Transaction> {
     ReaderBuilder::new()
         .trim(Trim::All)

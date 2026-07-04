@@ -47,8 +47,9 @@ pub enum EngineError {
     InvalidDisputeState { tx: TxId, kind: &'static str },
 }
 
-/// Owns all mutable state: per-client accounts and the store of past
-/// deposits/withdrawals that disputes reference.
+/// Owns all mutable state: per-client accounts and accepted money-moving
+/// transactions. Deposits can be disputed; withdrawals are retained for
+/// duplicate-ID detection and explicit "not disputable" errors.
 #[derive(Debug, Default)]
 pub struct PaymentsEngine {
     accounts: HashMap<ClientId, Account>,
@@ -222,8 +223,9 @@ impl PaymentsEngine {
         Ok(account)
     }
 
-    /// Look up a disputed-referenced tx, verifying it exists and is owned by
-    /// `client`. Returns a mutable handle so the caller can advance its state.
+    /// Look up a referenced accepted tx, verifying it exists and is owned by
+    /// `client`. Returns a mutable handle so the caller can advance its dispute
+    /// lifecycle state.
     fn referenced_tx(
         &mut self,
         tx: TxId,
