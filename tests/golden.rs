@@ -6,8 +6,9 @@
 //! - `NN-name.expected.csv` — the exact CSV the binary must print to stdout
 //!
 //! For each case the compiled binary is run end-to-end (`tx-processor <input>`)
-//! and its stdout is compared directly against the expected file. Add a case by
-//! dropping the two CSV files in `tests/cases/` — no code change needed.
+//! and its stdout is compared directly against the expected file, ignoring only
+//! a trailing-newline difference. Add a case by dropping the two CSV files in
+//! `tests/cases/` — no code change needed.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;

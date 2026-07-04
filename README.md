@@ -38,9 +38,9 @@ All required transaction types are implemented:
 
 ## Correctness
 
-Money uses `rust_decimal::Decimal`, not floating point. Account arithmetic is
-checked and applied atomically: if an operation would overflow, the account is
-left unchanged and the row is skipped.
+Money uses `rust_decimal::Decimal`, not floating point. Balance arithmetic is
+checked and applied atomically: if an operation would overflow, balances and
+stored transaction state are left unchanged and the row is skipped.
 
 `total` is never stored separately; it is derived as `available + held` when
 rendering output. This prevents `total`, `available`, and `held` from drifting
@@ -168,7 +168,8 @@ The project is tested at three levels:
   totals, and checked arithmetic.
 - Integration tests in `tests/golden.rs` auto-discover every
   `tests/cases/*.input.csv` file, run the compiled binary end to end, and compare
-  stdout with the matching `*.expected.csv` file.
+  stdout directly with the matching `*.expected.csv` file, ignoring only a
+  trailing-newline difference.
 
 There are 30 golden cases documented in `tests/cases/README.md`. They include
 the sample deposit/withdrawal scenario, all dispute lifecycle operations,

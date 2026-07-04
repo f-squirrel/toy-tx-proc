@@ -65,8 +65,10 @@ impl PaymentsEngine {
         &self.accounts
     }
 
-    /// Apply one transaction. On `Err`, no state has changed and the caller logs
-    /// the reason and moves on to the next row.
+    /// Apply one transaction. On `Err`, balances and stored transactions are not
+    /// updated. A syntactically valid first transaction can still create a
+    /// zero-balance account before failing a business rule such as insufficient
+    /// funds.
     pub fn process(&mut self, tx: Transaction) -> Result<(), EngineError> {
         // The operation names itself, so error messages stay in sync with the
         // `type` column without repeating string literals at each call site.
@@ -120,7 +122,7 @@ impl PaymentsEngine {
         let (amount, next) = {
             let stored = self.referenced_tx(id, client)?;
             // Only deposits are disputable: charging back a withdrawal would remove
-            // funds the client already received (see HANDOVER §1).
+            // funds the client already received.
             match stored {
                 StoredTransaction::Undisputed(tx) => {
                     let amount = disputable_amount(tx)?;

@@ -5,8 +5,8 @@
 //! Reads a CSV of transactions row-by-row, applies them to client accounts, and
 //! writes the final account states as CSV to stdout. All diagnostics go to
 //! stderr; stdout carries CSV only. Bad rows are logged and skipped — the run
-//! still exits 0. Only startup failures (missing arg, unopenable file) exit
-//! non-zero.
+//! still exits 0. Argument errors, unreadable input files, and output write
+//! failures exit non-zero.
 
 use std::path::PathBuf;
 use std::process::ExitCode;
