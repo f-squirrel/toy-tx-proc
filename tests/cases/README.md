@@ -49,3 +49,10 @@ newline difference, so expected files must match the engine's exact rendered CSV
 | 28 | locked-account-rejects-new-dispute | A locked account rejects a new dispute on a previously undisputed deposit. | Post-lock dispute ignored; `available 20`, `held 0`, `locked true`. |
 | 29 | empty-input-header-only | An input with only the transaction header still produces a valid account CSV. | Output contains only `client,available,held,total,locked`. |
 | 30 | all-invalid-input-header-only | If every data row is malformed, valid later output still has the account CSV header. | Output contains only `client,available,held,total,locked`. |
+| 31 | lifecycle-amounts-ignored | `dispute`/`resolve`/`chargeback` rows ignore any CSV `amount` value and always use the original deposit amount. | The `10.0` deposit is fully charged back even though lifecycle rows carry smaller amounts. |
+| 32 | lifecycle-amount-field-omitted | Lifecycle rows may omit the trailing `amount` field entirely. | Dispute and resolve parse successfully; later withdrawal leaves `available 6`. |
+| 33 | cross-client-duplicate-tx-id | Transaction IDs are globally unique, not scoped per client. | C2's first deposit using C1's `tx` ID is ignored; C2's later unique deposit counts. |
+| 34 | rejected-tx-id-can-be-reused | A rejected transaction is not stored, so its `tx` ID can be accepted later. | Failed first withdrawal does not burn `tx 1`; later deposit with `tx 1` counts. |
+| 35 | first-insufficient-withdrawal-creates-account | A syntactically valid first transaction can create an account before failing a business rule. | C1 appears with all balances `0.0` after an insufficient withdrawal. |
+| 36 | chargeback-after-resolve-ignored | A resolved transaction is no longer under dispute, so a later chargeback is invalid. | Funds remain available and the account stays unlocked. |
+| 37 | resolve-after-chargeback-ignored | A charged-back transaction is final, so a later resolve is invalid. | The account remains locked with zero balances. |
