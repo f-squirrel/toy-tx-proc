@@ -4,12 +4,12 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-csv = "1.4.0"
-env_logger = "0.11.11"
-log = "0.4.33"
-rust_decimal = "1.42.1"
-serde = { version = "1.0.228", features = ["derive"] }
-thiserror = "2.0.18"
+csv = { version = "1.4.0", default-features = false }
+env_logger = { version = "0.11.11", default-features = false }
+log = { version = "0.4.33", default-features = false }
+rust_decimal = { version = "1.42.1", default-features = false, features = ["serde"] }
+serde = { version = "1.0.228", default-features = false, features = ["alloc", "derive"] }
+thiserror = { version = "2.0.18", default-features = false }
 
 [dev-dependencies]
-rust_decimal_macros = "1.40.0"
+rust_decimal_macros = { version = "1.40.0", default-features = false }
