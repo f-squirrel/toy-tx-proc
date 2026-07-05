@@ -64,20 +64,52 @@ pub struct Transaction {
     pub operation: Operation,
 }
 
-/// A stored accepted deposit or withdrawal.
+/// A stored accepted deposit or withdrawal payload.
+#[derive(Debug, Clone, Copy)]
+pub struct StoredPayment {
+    client: ClientId,
+    amount: Decimal,
+}
+
+impl StoredPayment {
+    pub fn new(client: ClientId, amount: Decimal) -> Self {
+        Self { client, amount }
+    }
+
+    pub fn client(&self) -> ClientId {
+        self.client
+    }
+
+    pub fn amount(&self) -> Decimal {
+        self.amount
+    }
+}
+
+/// Dispute lifecycle for an accepted deposit.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DepositState {
+    Undisputed,
+    Disputed,
+    ChargedBack,
+}
+
+/// A stored accepted payment tagged by payment kind.
 #[derive(Debug, Clone, Copy)]
 pub enum StoredTransaction {
-    Undisputed(Transaction),
-    Disputed(Transaction),
-    ChargedBack(Transaction),
+    Deposit {
+        payment: StoredPayment,
+        state: DepositState,
+    },
+    Withdrawal {
+        client: ClientId,
+    },
 }
 
 impl StoredTransaction {
-    pub fn transaction(&self) -> &Transaction {
+    pub fn client(&self) -> ClientId {
         match self {
-            StoredTransaction::Undisputed(tx)
-            | StoredTransaction::Disputed(tx)
-            | StoredTransaction::ChargedBack(tx) => tx,
+            StoredTransaction::Deposit { payment, .. } => payment.client(),
+            StoredTransaction::Withdrawal { client } => *client,
         }
     }
 }

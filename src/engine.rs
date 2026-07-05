@@ -4,7 +4,8 @@ use rust_decimal::Decimal;
 use thiserror::Error;
 
 use crate::model::{
-    Account, AccountArithmeticError, ClientId, Operation, StoredTransaction, Transaction, TxId,
+    Account, AccountArithmeticError, ClientId, DepositState, Operation, StoredPayment,
+    StoredTransaction, Transaction, TxId,
 };
 
 /// Reasons a single row was skipped.
@@ -91,7 +92,13 @@ impl PaymentsEngine {
         account
             .deposit(amount)
             .map_err(|source| EngineError::AccountArithmetic { tx: tx.id, source })?;
-        self.store(tx);
+        self.transactions.insert(
+            tx.id,
+            StoredTransaction::Deposit {
+                payment: StoredPayment::new(tx.client, amount),
+                state: DepositState::Undisputed,
+            },
+        );
         Ok(())
     }
 
@@ -108,7 +115,8 @@ impl PaymentsEngine {
         account
             .withdrawal(amount)
             .map_err(|source| EngineError::AccountArithmetic { tx: tx.id, source })?;
-        self.store(tx);
+        self.transactions
+            .insert(tx.id, StoredTransaction::Withdrawal { client: tx.client });
         Ok(())
     }
 
@@ -123,11 +131,23 @@ impl PaymentsEngine {
             // Only deposits are disputable: charging back a withdrawal would remove
             // funds the client already received.
             match stored {
-                StoredTransaction::Undisputed(tx) => {
-                    let amount = disputable_amount(tx)?;
-                    (amount, StoredTransaction::Disputed(*tx))
+                StoredTransaction::Deposit {
+                    payment,
+                    state: DepositState::Undisputed,
+                } => {
+                    let amount = payment.amount();
+                    (
+                        amount,
+                        StoredTransaction::Deposit {
+                            payment: *payment,
+                            state: DepositState::Disputed,
+                        },
+                    )
                 }
-                StoredTransaction::Disputed(_) | StoredTransaction::ChargedBack(_) => {
+                StoredTransaction::Withdrawal { .. } => {
+                    return Err(EngineError::NotDisputable { tx: id });
+                }
+                _ => {
                     return Err(EngineError::InvalidDisputeState { tx: id, kind });
                 }
             }
@@ -152,11 +172,20 @@ impl PaymentsEngine {
         let (amount, next) = {
             let stored = self.referenced_tx(id, client)?;
             match stored {
-                StoredTransaction::Disputed(tx) => {
-                    let amount = stored_amount(tx);
-                    (amount, StoredTransaction::Undisputed(*tx))
+                StoredTransaction::Deposit {
+                    payment,
+                    state: DepositState::Disputed,
+                } => {
+                    let amount = payment.amount();
+                    (
+                        amount,
+                        StoredTransaction::Deposit {
+                            payment: *payment,
+                            state: DepositState::Undisputed,
+                        },
+                    )
                 }
-                StoredTransaction::Undisputed(_) | StoredTransaction::ChargedBack(_) => {
+                _ => {
                     return Err(EngineError::InvalidDisputeState { tx: id, kind });
                 }
             }
@@ -178,11 +207,20 @@ impl PaymentsEngine {
         let (amount, next) = {
             let stored = self.referenced_tx(id, client)?;
             match stored {
-                StoredTransaction::Disputed(tx) => {
-                    let amount = stored_amount(tx);
-                    (amount, StoredTransaction::ChargedBack(*tx))
+                StoredTransaction::Deposit {
+                    payment,
+                    state: DepositState::Disputed,
+                } => {
+                    let amount = payment.amount();
+                    (
+                        amount,
+                        StoredTransaction::Deposit {
+                            payment: *payment,
+                            state: DepositState::ChargedBack,
+                        },
+                    )
                 }
-                StoredTransaction::Undisputed(_) | StoredTransaction::ChargedBack(_) => {
+                _ => {
                     return Err(EngineError::InvalidDisputeState { tx: id, kind });
                 }
             }
@@ -224,34 +262,10 @@ impl PaymentsEngine {
             .transactions
             .get_mut(&tx)
             .ok_or(EngineError::UnknownTx { tx })?;
-        if stored.transaction().client != client {
+        if stored.client() != client {
             return Err(EngineError::ClientMismatch { tx, client });
         }
         Ok(stored)
-    }
-
-    fn store(&mut self, tx: Transaction) {
-        self.transactions
-            .insert(tx.id, StoredTransaction::Undisputed(tx));
-    }
-}
-
-fn disputable_amount(tx: &Transaction) -> Result<Decimal, EngineError> {
-    match &tx.operation {
-        Operation::Deposit { amount } => Ok(*amount),
-        Operation::Withdrawal { .. } => Err(EngineError::NotDisputable { tx: tx.id }),
-        Operation::Dispute | Operation::Resolve | Operation::Chargeback => {
-            unreachable!("only accepted deposits and withdrawals are stored")
-        }
-    }
-}
-
-fn stored_amount(tx: &Transaction) -> Decimal {
-    match &tx.operation {
-        Operation::Deposit { amount } | Operation::Withdrawal { amount } => *amount,
-        Operation::Dispute | Operation::Resolve | Operation::Chargeback => {
-            unreachable!("only accepted deposits and withdrawals are stored")
-        }
     }
 }
 
